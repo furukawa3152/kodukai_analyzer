@@ -8,11 +8,8 @@ from datetime import datetime, timedelta
 import re
 import os
 
-# 環境に応じてコネクターを選択
-if "gcp_service_account" in st.secrets:
-    from gsheet_connector_cloud import GSheetConnectorCloud as GSheetConnector
-else:
-    from gsheet_connector import GSheetConnector
+# ローカル環境用のコネクターを使用
+from gsheet_connector import GSheetConnector
 
 # ページ設定
 st.set_page_config(
@@ -46,9 +43,11 @@ def load_data():
                         df['金額'] = pd.to_numeric(df['金額'], errors='coerce')
                         df['日時'] = pd.to_datetime(df['日時'], errors='coerce')
                         
-                        # 年月カラムから年と月を抽出
-                        df['年'] = df['年月'].astype(str).str[:4]
-                        df['月'] = df['年月'].astype(str).str[4:6]
+                        # 年月カラム（202311形式）から年と月を抽出
+                        df['年月'] = df['年月'].astype(str).str.zfill(6)  # 6桁に統一
+                        df['年'] = df['年月'].str[:4]
+                        df['月'] = df['年月'].str[4:6]
+                        df['年月表示'] = df['年'] + '年' + df['月'] + '月'  # 表示用
                         df['年月日'] = df['日時'].dt.date
                         
                         return df
@@ -56,20 +55,24 @@ def load_data():
     return pd.DataFrame()
 
 def create_monthly_analysis(df):
-    """月別分析"""
-    st.subheader("📊 月別支出分析")
+    """月別分析（締め年月基準）"""
+    st.subheader("📊 月別支出分析（締め年月基準）")
+    st.info("💡 この分析は「年月」カラム（202311形式）の締め年月を基準に集計しています")
     
     if df.empty:
         st.error("データが読み込まれていません")
         return
     
-    # 月別集計
-    monthly_summary = df.groupby('年月').agg({
+    # 年月（締め月）別集計
+    monthly_summary = df.groupby(['年月', '年月表示']).agg({
         '金額': ['sum', 'count', 'mean']
     }).round(2)
     
     monthly_summary.columns = ['総支出', '支出回数', '平均支出']
     monthly_summary = monthly_summary.reset_index()
+    
+    # 年月でソート
+    monthly_summary = monthly_summary.sort_values('年月')
     
     col1, col2 = st.columns(2)
     
@@ -77,30 +80,56 @@ def create_monthly_analysis(df):
         # 月別総支出のグラフ
         fig = px.bar(
             monthly_summary, 
-            x='年月', 
+            x='年月表示', 
             y='総支出',
-            title='月別総支出',
+            title='締め月別総支出',
             color='総支出',
-            color_continuous_scale='Blues'
+            color_continuous_scale='Blues',
+            text='総支出'
         )
         fig.update_layout(xaxis_tickangle=-45)
+        fig.update_traces(texttemplate='¥%{text:,.0f}', textposition='outside')
         st.plotly_chart(fig, use_container_width=True)
     
     with col2:
         # 月別支出回数のグラフ
         fig = px.line(
             monthly_summary, 
-            x='年月', 
+            x='年月表示', 
             y='支出回数',
-            title='月別支出回数',
-            markers=True
+            title='締め月別支出回数',
+            markers=True,
+            text='支出回数'
         )
         fig.update_layout(xaxis_tickangle=-45)
+        fig.update_traces(textposition='top center')
         st.plotly_chart(fig, use_container_width=True)
     
     # 統計サマリー
-    st.subheader("📈 月別統計サマリー")
-    st.dataframe(monthly_summary, use_container_width=True)
+    st.subheader("📈 締め月別統計サマリー")
+    
+    # 表示用のデータフレームを作成
+    display_summary = monthly_summary.copy()
+    display_summary['総支出'] = display_summary['総支出'].apply(lambda x: f"¥{x:,.0f}")
+    display_summary['平均支出'] = display_summary['平均支出'].apply(lambda x: f"¥{x:,.0f}")
+    display_summary = display_summary[['年月表示', '総支出', '支出回数', '平均支出']]
+    
+    st.dataframe(display_summary, use_container_width=True)
+    
+    # 追加統計情報
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.metric("総期間", f"{len(monthly_summary)} ヶ月")
+    
+    with col2:
+        st.metric("月平均支出", f"¥{monthly_summary['総支出'].mean():,.0f}")
+    
+    with col3:
+        st.metric("最高月支出", f"¥{monthly_summary['総支出'].max():,.0f}")
+    
+    with col4:
+        st.metric("最低月支出", f"¥{monthly_summary['総支出'].min():,.0f}")
 
 def create_category_analysis(df):
     """カテゴリ別分析"""
@@ -180,25 +209,29 @@ def create_search_analysis(df):
             with col3:
                 st.metric("平均支出", f"¥{filtered_df['金額'].mean():.0f}")
             
-            # 月別推移
-            monthly_search = filtered_df.groupby('年月')['金額'].sum().reset_index()
+            # 月別推移（締め年月基準）
+            monthly_search = filtered_df.groupby(['年月', '年月表示'])['金額'].sum().reset_index()
+            monthly_search = monthly_search.sort_values('年月')
+            
             if len(monthly_search) > 1:
                 fig = px.line(
                     monthly_search, 
-                    x='年月', 
+                    x='年月表示', 
                     y='金額',
-                    title=f"'{search_term}' の月別支出推移",
-                    markers=True
+                    title=f"'{search_term}' の締め月別支出推移",
+                    markers=True,
+                    text='金額'
                 )
                 fig.update_layout(xaxis_tickangle=-45)
+                fig.update_traces(texttemplate='¥%{text:,.0f}', textposition='top center')
                 st.plotly_chart(fig, use_container_width=True)
             
             # 詳細データ
             st.subheader("🔍 検索結果詳細")
-            st.dataframe(
-                filtered_df[['項目', '金額', '日時', '年月']].sort_values('日時', ascending=False),
-                use_container_width=True
-            )
+            display_df = filtered_df[['項目', '金額', '日時', '年月表示']].copy()
+            display_df['金額'] = display_df['金額'].apply(lambda x: f"¥{x:,.0f}")
+            display_df = display_df.sort_values('日時', ascending=False)
+            st.dataframe(display_df, use_container_width=True)
         else:
             st.warning(f"'{search_term}' を含む項目は見つかりませんでした")
 
@@ -264,7 +297,17 @@ def main():
     st.sidebar.subheader("📈 データ概要")
     st.sidebar.write(f"総データ数: {len(df):,} 件")
     st.sidebar.write(f"総支出額: ¥{df['金額'].sum():,}")
-    st.sidebar.write(f"期間: {df['日時'].min().strftime('%Y-%m-%d')} ～ {df['日時'].max().strftime('%Y-%m-%d')}")
+    st.sidebar.write(f"記録期間: {df['日時'].min().strftime('%Y-%m-%d')} ～ {df['日時'].max().strftime('%Y-%m-%d')}")
+    
+    # 締め年月の範囲
+    unique_months = sorted(df['年月'].unique())
+    if len(unique_months) > 0:
+        start_month = unique_months[0]
+        end_month = unique_months[-1]
+        start_display = f"{start_month[:4]}年{start_month[4:6]}月"
+        end_display = f"{end_month[:4]}年{end_month[4:6]}月"
+        st.sidebar.write(f"締め年月: {start_display} ～ {end_display}")
+        st.sidebar.write(f"対象月数: {len(unique_months)} ヶ月")
     
     # 分析タイプ選択
     analysis_type = st.sidebar.selectbox(
