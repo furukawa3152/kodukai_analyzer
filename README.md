@@ -8,6 +8,12 @@ Gspreadを使って、Googleスプレッドシートの「kodukai-db」シート
 - 🏷️ **項目別分析**: 支出項目ごとの統計とグラフ表示
 - 🔍 **項目検索**: 特定の文字列を含む項目の検索・分析
 - 📅 **時系列分析**: 日別・曜日別の支出パターン分析
+- 📊 **期間比較**: 2つの期間の支出を比較分析
+- 🎯 **期間選択**: 分析対象期間を柔軟に選択
+  - 全期間表示
+  - 年月範囲指定（締め年月基準）
+  - 日付範囲指定（実際の支出日基準）
+  - 最近N ヶ月表示
 
 ## セットアップ
 
@@ -59,7 +65,22 @@ auth_uri = "https://accounts.google.com/o/oauth2/auth"
 token_uri = "https://oauth2.googleapis.com/token"
 auth_provider_x509_cert_url = "https://www.googleapis.com/oauth2/v1/certs"
 client_x509_cert_url = "https://www.googleapis.com/robot/v1/metadata/x509/your-service-account-email%40your-project.iam.gserviceaccount.com"
+
+# スプレッドシート設定
+SPREADSHEET_URL = "https://docs.google.com/spreadsheets/d/your-spreadsheet-id/edit"
+WORKSHEET_NAME = "kodukai-db"
 ```
+
+**重要**: 
+- `your-project-id`, `your-private-key-id`, `your-private-key`, `your-service-account-email`, `your-client-id`は実際の値に置き換えてください
+- `your-spreadsheet-id`は実際のスプレッドシートIDに置き換えてください
+- `private_key`の値は改行文字（`\n`）を含めて正確にコピーしてください
+
+### 3. ローカル開発用のSecrets設定（オプション）
+ローカルでもStreamlit Cloudと同じ設定を使いたい場合：
+1. `.streamlit/secrets.toml.template`をコピーして`.streamlit/secrets.toml`を作成
+2. 実際の認証情報を設定
+3. アプリが自動的にsecretsから設定を読み込みます
 
 ## ファイル構成
 ```
