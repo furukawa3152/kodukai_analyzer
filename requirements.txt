@@ -1,0 +1,6 @@
+gspread==6.2.1
+streamlit==1.45.1
+pandas==2.3.0
+matplotlib==3.10.3
+seaborn==0.13.2
+plotly==6.1.2
